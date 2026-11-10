@@ -1,0 +1,322 @@
+openapi: 3.0.3
+info:
+  title: Finlo Sync & Auth API
+  description: Offline-first personal finance sync engine and authentication backend.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+paths:
+  /health/live:
+    get:
+      summary: Liveness probe
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+  /health/ready:
+    get:
+      summary: Readiness probe
+      responses:
+        '200':
+          description: Service is ready to accept traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+  /v1/auth/register:
+    post:
+      summary: Register with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid input
+        '409':
+          description: Email already in use
+  /v1/auth/login:
+    post:
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+  /v1/auth/refresh:
+    post:
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Token rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid or revoked refresh token
+  /v1/auth/google:
+    post:
+      summary: Sign in with Google ID token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken:
+                  type: string
+      responses:
+        '200':
+          description: Google sign-in successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+  /v1/sync/push:
+    post:
+      summary: Batch push incremental changes
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [changes]
+              properties:
+                changes:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/SyncPushItem'
+      responses:
+        '200':
+          description: Changes applied or cached idempotent response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPushResponse'
+        '400':
+          description: Missing idempotency key or future timestamp
+        '401':
+          description: Unauthorized
+  /v1/sync/pull:
+    get:
+      summary: Pull changes since cursor
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: cursor
+          schema:
+            type: integer
+            default: 0
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Incremental changes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPullResponse'
+        '401':
+          description: Unauthorized
+  /v1/attachments/presign-upload:
+    post:
+      summary: Request presigned upload URL for receipt attachment
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileName, contentType, size]
+              properties:
+                fileName:
+                  type: string
+                contentType:
+                  type: string
+                size:
+                  type: integer
+      responses:
+        '200':
+          description: Presigned upload URL generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadUrl:
+                    type: string
+                  fileKey:
+                    type: string
+                  expiresIn:
+                    type: integer
+  /v1/attachments/presign-download:
+    get:
+      summary: Request presigned download URL for receipt attachment
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: fileKey
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Presigned download URL generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  downloadUrl:
+                    type: string
+                  expiresIn:
+                    type: integer
+  /v1/user/export:
+    get:
+      summary: LGPD complete data export
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: All user data in JSON format
+  /v1/user/account:
+    delete:
+      summary: LGPD account and data permanent deletion
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Account deleted successfully
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        userId:
+          type: string
+        email:
+          type: string
+        expiresIn:
+          type: integer
+    SyncPushItem:
+      type: object
+      required: [entity, id, op, updatedAt, deviceId]
+      properties:
+        entity:
+          type: string
+          enum: [account, category, transaction, goal, recurring_rule]
+        id:
+          type: string
+        op:
+          type: string
+          enum: [upsert, delete]
+        payload:
+          type: object
+        updatedAt:
+          type: integer
+        deviceId:
+          type: string
+        deletedAt:
+          type: integer
+          nullable: true
+    SyncPushResponse:
+      type: object
+      properties:
+        appliedCount:
+          type: integer
+        serverVersion:
+          type: integer
+    SyncPullResponse:
+      type: object
+      properties:
+        changes:
+          type: array
+          items:
+            type: object
+        nextCursor:
+          type: integer
+        hasMore:
+          type: boolean

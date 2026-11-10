@@ -1,0 +1,19 @@
+# Binaries and builds
+backend/bin/
+backend/server
+*.exe
+*.test
+*.out
+
+# Android & Gradle
+.gradle/
+build/
+android/app/build/
+android/.gradle/
+local.properties
+.idea/
+*.iml
+
+# Environment & logs
+.env
+*.log
