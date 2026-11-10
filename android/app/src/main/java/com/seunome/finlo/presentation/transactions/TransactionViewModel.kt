@@ -2,12 +2,17 @@ package com.seunome.finlo.presentation.transactions
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.seunome.finlo.core.util.UuidV7
+import com.seunome.finlo.data.repository.RecurringRuleRepositoryImpl
 import com.seunome.finlo.domain.model.Account
 import com.seunome.finlo.domain.model.Category
+import com.seunome.finlo.domain.model.Frequency
+import com.seunome.finlo.domain.model.RecurringRule
 import com.seunome.finlo.domain.model.Transaction
 import com.seunome.finlo.domain.model.TransactionType
 import com.seunome.finlo.domain.repository.AccountRepository
 import com.seunome.finlo.domain.repository.CategoryRepository
+import com.seunome.finlo.domain.repository.RecurringRuleRepository
 import com.seunome.finlo.domain.repository.TransactionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.util.UUID
+import java.util.Calendar
 import javax.inject.Inject
 
 data class TransactionListUiState(
@@ -34,8 +39,15 @@ data class TransactionListUiState(
 class TransactionViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val accountRepository: AccountRepository,
-    private val categoryRepository: CategoryRepository
+    private val categoryRepository: CategoryRepository,
+    private val recurringRuleRepository: RecurringRuleRepository
 ) : ViewModel() {
+
+    init {
+        viewModelScope.launch {
+            recurringRuleRepository.processDueRecurringRules()
+        }
+    }
 
     private val _searchQuery = MutableStateFlow("")
     private val _selectedType = MutableStateFlow<TransactionType?>(null)
@@ -107,10 +119,33 @@ class TransactionViewModel @Inject constructor(
         dateEpochMs: Long,
         receiptAttachment: String? = null,
         isInstallment: Boolean = false,
-        totalInstallments: Int = 1
+        totalInstallments: Int = 1,
+        isRecurring: Boolean = false,
+        recurringFrequency: Frequency = Frequency.MONTHLY
     ) {
         viewModelScope.launch {
-            val txId = id ?: UUID.randomUUID().toString()
+            val txId = id ?: UuidV7.generate(dateEpochMs)
+            var ruleId: String? = null
+
+            if (isRecurring && id == null) {
+                val cal = Calendar.getInstance().apply { timeInMillis = dateEpochMs }
+                val dayOfMonth = cal.get(Calendar.DAY_OF_MONTH)
+                val nextDue = RecurringRuleRepositoryImpl.calculateNextDueDate(dateEpochMs, recurringFrequency, dayOfMonth)
+
+                ruleId = recurringRuleRepository.createRule(
+                    RecurringRule(
+                        id = UuidV7.generate(),
+                        accountId = accountId,
+                        categoryId = categoryId,
+                        type = type,
+                        amountCents = amountCents,
+                        frequency = recurringFrequency,
+                        dayOfMonth = dayOfMonth,
+                        nextDueDateEpochMs = nextDue
+                    )
+                )
+            }
+
             val baseTx = Transaction(
                 id = txId,
                 accountId = accountId,
@@ -120,7 +155,8 @@ class TransactionViewModel @Inject constructor(
                 amountCents = amountCents,
                 dateEpochMs = dateEpochMs,
                 description = description,
-                receiptAttachment = receiptAttachment
+                receiptAttachment = receiptAttachment,
+                recurringRuleId = ruleId
             )
 
             if (isInstallment && totalInstallments > 1 && id == null) {

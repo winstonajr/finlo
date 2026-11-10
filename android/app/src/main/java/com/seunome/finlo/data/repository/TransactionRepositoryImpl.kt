@@ -6,13 +6,13 @@ import com.seunome.finlo.core.database.dao.CategoryExpenseTotal
 import com.seunome.finlo.core.database.entity.SyncChangeEntity
 import com.seunome.finlo.core.database.entity.TransactionEntity
 import com.seunome.finlo.core.security.SecureStorage
+import com.seunome.finlo.core.util.UuidV7
 import com.seunome.finlo.domain.model.Transaction
 import com.seunome.finlo.domain.model.TransactionType
 import com.seunome.finlo.domain.repository.TransactionRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.Calendar
-import java.util.UUID
 
 class TransactionRepositoryImpl(
     private val database: AppDatabase,
@@ -55,7 +55,8 @@ class TransactionRepositoryImpl(
     override suspend fun createTransaction(transaction: Transaction) {
         val now = System.currentTimeMillis()
         val deviceId = secureStorage.getDeviceId()
-        val entity = TransactionEntity.fromDomain(transaction.copy(updatedAt = now))
+        val txId = if (transaction.id.isBlank()) UuidV7.generate(now) else transaction.id
+        val entity = TransactionEntity.fromDomain(transaction.copy(id = txId, updatedAt = now))
 
         database.transactionDao().upsertTransaction(entity)
         enqueueSync("transaction", entity.id, "upsert", entity, now, deviceId, null)
@@ -83,7 +84,7 @@ class TransactionRepositoryImpl(
                 baseCentsPerInstallment
             }
 
-            val txId = UUID.randomUUID().toString()
+            val txId = UuidV7.generate(calendar.timeInMillis)
             val installmentDate = calendar.timeInMillis
 
             val installmentTx = baseTransaction.copy(
@@ -148,7 +149,7 @@ class TransactionRepositoryImpl(
         val payloadJson = if (payload != null) gson.toJson(payload) else "{}"
         database.syncChangeDao().enqueue(
             SyncChangeEntity(
-                id = UUID.randomUUID().toString(),
+                id = UuidV7.generate(),
                 entityType = entityType,
                 entityId = entityId,
                 operation = op,

@@ -57,13 +57,13 @@ func (s *Service) Push(ctx context.Context, userID, idempotencyKey string, req d
 		})
 	}
 
-	latestVersion, err := s.syncRepo.ApplyChanges(ctx, userID, changes)
+	latestVersion, appliedCount, err := s.syncRepo.ApplyChanges(ctx, userID, changes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply changes: %w", err)
 	}
 
 	response := &domain.SyncPushResponse{
-		AppliedCount:  len(changes),
+		AppliedCount:  appliedCount,
 		ServerVersion: latestVersion,
 	}
 

@@ -200,10 +200,10 @@ func (p *PostgresRepository) GetIdempotencyResponse(ctx context.Context, userID,
 	return resp, true, nil
 }
 
-func (p *PostgresRepository) ApplyChanges(ctx context.Context, userID string, changes []domain.SyncChange) (int64, error) {
+func (p *PostgresRepository) ApplyChanges(ctx context.Context, userID string, changes []domain.SyncChange) (int64, int, error) {
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+		return 0, 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback()
@@ -221,13 +221,14 @@ func (p *PostgresRepository) ApplyChanges(ctx context.Context, userID string, ch
 			currentVersion = 0
 			_, err = tx.ExecContext(ctx, `INSERT INTO user_version_counters (user_id, current_version) VALUES ($1, 0)`, userID)
 			if err != nil {
-				return 0, fmt.Errorf("failed to init user version counter: %w", err)
+				return 0, 0, fmt.Errorf("failed to init user version counter: %w", err)
 			}
 		} else {
-			return 0, fmt.Errorf("failed to fetch user version: %w", err)
+			return 0, 0, fmt.Errorf("failed to fetch user version: %w", err)
 		}
 	}
 
+	var appliedCount int
 	for _, item := range changes {
 		latestQuery := `
 			SELECT client_updated, device_id FROM sync_changes
@@ -245,10 +246,11 @@ func (p *PostgresRepository) ApplyChanges(ctx context.Context, userID string, ch
 				continue
 			}
 		} else if !errors.Is(err, sql.ErrNoRows) {
-			return 0, fmt.Errorf("failed to query latest change: %w", err)
+			return 0, 0, fmt.Errorf("failed to query latest change: %w", err)
 		}
 
 		currentVersion++
+		appliedCount++
 		changeID := uuid.New().String()
 		insertQuery := `
 			INSERT INTO sync_changes (id, user_id, entity, entity_id, operation, payload, client_updated, server_version, device_id, deleted_at, created_at)
@@ -268,7 +270,7 @@ func (p *PostgresRepository) ApplyChanges(ctx context.Context, userID string, ch
 			time.Now(),
 		)
 		if err != nil {
-			return 0, fmt.Errorf("failed to insert sync change: %w", err)
+			return 0, 0, fmt.Errorf("failed to insert sync change: %w", err)
 		}
 	}
 
@@ -279,14 +281,14 @@ func (p *PostgresRepository) ApplyChanges(ctx context.Context, userID string, ch
 	`
 	_, err = tx.ExecContext(ctx, updateCounterQuery, currentVersion, userID)
 	if err != nil {
-		return 0, fmt.Errorf("failed to update user version counter: %w", err)
+		return 0, 0, fmt.Errorf("failed to update user version counter: %w", err)
 	}
 
 	if err = tx.Commit(); err != nil {
-		return 0, fmt.Errorf("failed to commit sync transaction: %w", err)
+		return 0, 0, fmt.Errorf("failed to commit sync transaction: %w", err)
 	}
 
-	return currentVersion, nil
+	return currentVersion, appliedCount, nil
 }
 
 func (p *PostgresRepository) GetChangesAfterVersion(ctx context.Context, userID string, cursor int64, limit int) ([]domain.SyncChange, int64, bool, error) {

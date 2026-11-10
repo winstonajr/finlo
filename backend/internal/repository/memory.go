@@ -195,7 +195,7 @@ func (m *MemoryRepository) GetIdempotencyResponse(_ context.Context, userID, key
 	return resp, exists, nil
 }
 
-func (m *MemoryRepository) ApplyChanges(_ context.Context, userID string, changes []domain.SyncChange) (int64, error) {
+func (m *MemoryRepository) ApplyChanges(_ context.Context, userID string, changes []domain.SyncChange) (int64, int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -206,6 +206,7 @@ func (m *MemoryRepository) ApplyChanges(_ context.Context, userID string, change
 		m.userChanges[userID] = activeEntities
 	}
 
+	var appliedCount int
 	for _, item := range changes {
 		entityKey := string(item.Entity) + ":" + item.EntityID
 		existing, hasExisting := activeEntities[entityKey]
@@ -220,6 +221,7 @@ func (m *MemoryRepository) ApplyChanges(_ context.Context, userID string, change
 		}
 
 		currentVersion++
+		appliedCount++
 		changeRecord := item
 		changeRecord.UserID = userID
 		changeRecord.ServerVersion = currentVersion
@@ -229,7 +231,7 @@ func (m *MemoryRepository) ApplyChanges(_ context.Context, userID string, change
 	}
 
 	m.userVersions[userID] = currentVersion
-	return currentVersion, nil
+	return currentVersion, appliedCount, nil
 }
 
 func (m *MemoryRepository) GetChangesAfterVersion(_ context.Context, userID string, cursor int64, limit int) ([]domain.SyncChange, int64, bool, error) {

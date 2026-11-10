@@ -45,4 +45,4 @@ CREATE TABLE IF NOT EXISTS sync_changes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sync_changes_pull ON sync_changes(user_id, server_version ASC);
-CREATE INDEX IF NOT EXISTS idx_sync_changes_entity ON sync_changes(user_id, entity, entity_id);
+CREATE INDEX IF NOT EXISTS idx_sync_changes_entity ON sync_changes(user_id, entity, entity_id, server_version DESC);

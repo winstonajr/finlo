@@ -39,8 +39,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.seunome.finlo.domain.model.Frequency
 import com.seunome.finlo.domain.model.TransactionType
 import com.seunome.finlo.presentation.components.CurrencyTextField
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,11 +58,15 @@ fun AddEditTransactionScreen(
     var type by remember { mutableStateOf(TransactionType.EXPENSE) }
     var amountCents by remember { mutableLongStateOf(0L) }
     var description by remember { mutableStateOf("") }
+    var dateEpochMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var receiptAttachment by remember { mutableStateOf("") }
     var selectedAccountId by remember { mutableStateOf("") }
     var selectedTargetAccountId by remember { mutableStateOf("") }
     var selectedCategoryId by remember { mutableStateOf("") }
     var isInstallment by remember { mutableStateOf(false) }
     var totalInstallments by remember { mutableIntStateOf(2) }
+    var isRecurring by remember { mutableStateOf(false) }
+    var recurringFrequency by remember { mutableStateOf(Frequency.MONTHLY) }
 
     LaunchedEffect(state.accounts, state.categories) {
         if (selectedAccountId.isEmpty() && state.accounts.isNotEmpty()) {
@@ -76,6 +84,8 @@ fun AddEditTransactionScreen(
                 type = tx.type
                 amountCents = tx.amountCents
                 description = tx.description
+                dateEpochMs = tx.dateEpochMs
+                receiptAttachment = tx.receiptAttachment ?: ""
                 selectedAccountId = tx.accountId
                 selectedTargetAccountId = tx.targetAccountId ?: ""
                 selectedCategoryId = tx.categoryId
@@ -233,8 +243,29 @@ fun AddEditTransactionScreen(
                 }
             }
 
-            // Installments section
-            if (type == TransactionType.EXPENSE && transactionId == null) {
+            // Date display (RF08)
+            val dateFormatted = remember(dateEpochMs) {
+                SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(dateEpochMs))
+            }
+            OutlinedTextField(
+                value = dateFormatted,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Data da Transação") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // Attachment input (RF08)
+            OutlinedTextField(
+                value = receiptAttachment,
+                onValueChange = { receiptAttachment = it },
+                label = { Text("Anexo de Comprovante (URL ou nome do arquivo)") },
+                placeholder = { Text("ex: comprovante.png ou recibo.pdf") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // Installments section (RN06)
+            if (type == TransactionType.EXPENSE && transactionId == null && !isRecurring) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -256,6 +287,64 @@ fun AddEditTransactionScreen(
                 }
             }
 
+            // Recurring transaction section (RF10 & RN05)
+            if (transactionId == null && !isInstallment) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = isRecurring,
+                        onCheckedChange = { isRecurring = it }
+                    )
+                    Text("Transação Recorrente (aluguel, salário, etc.)")
+                }
+
+                if (isRecurring) {
+                    var freqExpanded by remember { mutableStateOf(false) }
+                    val freqLabel = when (recurringFrequency) {
+                        Frequency.DAILY -> "Diária"
+                        Frequency.WEEKLY -> "Semanal"
+                        Frequency.MONTHLY -> "Mensal"
+                        Frequency.YEARLY -> "Anual"
+                    }
+
+                    ExposedDropdownMenuBox(
+                        expanded = freqExpanded,
+                        onExpandedChange = { freqExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = freqLabel,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Frequência") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = freqExpanded) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = freqExpanded,
+                            onDismissRequest = { freqExpanded = false }
+                        ) {
+                            Frequency.entries.forEach { freq ->
+                                val text = when (freq) {
+                                    Frequency.DAILY -> "Diária"
+                                    Frequency.WEEKLY -> "Semanal"
+                                    Frequency.MONTHLY -> "Mensal"
+                                    Frequency.YEARLY -> "Anual"
+                                }
+                                DropdownMenuItem(
+                                    text = { Text(text) },
+                                    onClick = {
+                                        recurringFrequency = freq
+                                        freqExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             Button(
@@ -269,9 +358,12 @@ fun AddEditTransactionScreen(
                             targetAccountId = if (type == TransactionType.TRANSFER) selectedTargetAccountId else null,
                             categoryId = selectedCategoryId,
                             description = description,
-                            dateEpochMs = System.currentTimeMillis(),
+                            dateEpochMs = dateEpochMs,
+                            receiptAttachment = receiptAttachment.ifBlank { null },
                             isInstallment = isInstallment,
-                            totalInstallments = totalInstallments
+                            totalInstallments = totalInstallments,
+                            isRecurring = isRecurring,
+                            recurringFrequency = recurringFrequency
                         )
                         onBack()
                     }

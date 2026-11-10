@@ -61,8 +61,8 @@ interface TransactionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertTransactions(txList: List<TransactionEntity>)
 
-    @Query("UPDATE transactions SET deletedAt = :deletedAt, updatedAt = :updatedAt, syncStatus = 'PENDING' WHERE id = :id")
-    suspend fun softDeleteTransaction(id: String, deletedAt: Long, updatedAt: Long)
+    @Query("UPDATE transactions SET deletedAt = :deletedAt, updatedAt = :updatedAt, syncStatus = :syncStatus WHERE id = :id")
+    suspend fun softDeleteTransaction(id: String, deletedAt: Long, updatedAt: Long, syncStatus: String = "PENDING")
 
     @Query("""
         SELECT COALESCE(SUM(amountCents), 0) FROM transactions 

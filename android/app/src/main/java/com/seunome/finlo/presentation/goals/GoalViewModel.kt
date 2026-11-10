@@ -2,6 +2,7 @@ package com.seunome.finlo.presentation.goals
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.seunome.finlo.core.util.UuidV7
 import com.seunome.finlo.domain.model.Goal
 import com.seunome.finlo.domain.repository.GoalRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -10,7 +11,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.util.UUID
 import javax.inject.Inject
 
 data class GoalUiState(
@@ -35,7 +35,7 @@ class GoalViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             val goal = Goal(
-                id = id ?: UUID.randomUUID().toString(),
+                id = id ?: UuidV7.generate(),
                 name = name,
                 targetAmountCents = targetAmountCents,
                 currentAmountCents = currentAmountCents,

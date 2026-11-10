@@ -13,10 +13,10 @@ import com.seunome.finlo.core.network.dto.SyncChangeItemDto
 import com.seunome.finlo.core.network.dto.SyncPushItemDto
 import com.seunome.finlo.core.network.dto.SyncPushRequestDto
 import com.seunome.finlo.core.security.SecureStorage
+import com.seunome.finlo.core.util.UuidV7
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.util.UUID
 
 sealed class SyncState {
     object Idle : SyncState()
@@ -61,34 +61,36 @@ class SyncManager(
     }
 
     private suspend fun pushPendingChanges(deviceId: String) {
-        val pendingChanges = database.syncChangeDao().getPendingChanges(100)
-        if (pendingChanges.isEmpty()) return
+        while (true) {
+            val pendingChanges = database.syncChangeDao().getPendingChanges(100)
+            if (pendingChanges.isEmpty()) break
 
-        val items = pendingChanges.map { entity ->
-            val payloadElement = try {
-                gson.fromJson(entity.payloadJson, JsonElement::class.java)
-            } catch (e: Exception) {
-                null
+            val items = pendingChanges.map { entity ->
+                val payloadElement = try {
+                    gson.fromJson(entity.payloadJson, JsonElement::class.java)
+                } catch (e: Exception) {
+                    null
+                }
+
+                SyncPushItemDto(
+                    entity = entity.entityType,
+                    id = entity.entityId,
+                    op = entity.operation,
+                    payload = payloadElement,
+                    updatedAt = entity.clientUpdated,
+                    deviceId = deviceId,
+                    deletedAt = entity.deletedAt
+                )
             }
 
-            SyncPushItemDto(
-                entity = entity.entityType,
-                id = entity.entityId,
-                op = entity.operation,
-                payload = payloadElement,
-                updatedAt = entity.clientUpdated,
-                deviceId = deviceId,
-                deletedAt = entity.deletedAt
-            )
-        }
+            val idempotencyKey = UuidV7.generate()
+            val response = apiService.pushChanges(idempotencyKey, SyncPushRequestDto(items))
 
-        val idempotencyKey = UUID.randomUUID().toString()
-        val response = apiService.pushChanges(idempotencyKey, SyncPushRequestDto(items))
-
-        if (response.isSuccessful) {
-            database.syncChangeDao().removeChanges(pendingChanges.map { it.id })
-        } else {
-            throw Exception("Push failed: HTTP ${response.code()}")
+            if (response.isSuccessful) {
+                database.syncChangeDao().removeChanges(pendingChanges.map { it.id })
+            } else {
+                throw Exception("Push failed: HTTP ${response.code()}")
+            }
         }
     }
 
@@ -114,6 +116,8 @@ class SyncManager(
     }
 
     private suspend fun applyRemoteChange(change: SyncChangeItemDto, localDeviceId: String) {
+        val isDelete = change.op == "delete" || change.deletedAt != null
+
         when (change.entity) {
             "account" -> {
                 val existing = database.accountDao().getAccountById(change.entityId)
@@ -123,9 +127,20 @@ class SyncManager(
                     remoteUpdatedAt = change.updatedAt,
                     remoteDeviceId = change.deviceId
                 )
-                if (shouldApply && change.payload != null) {
-                    val acc = gson.fromJson(change.payload, AccountEntity::class.java)
-                    database.accountDao().upsertAccount(acc)
+                if (shouldApply) {
+                    if (isDelete) {
+                        if (existing != null) {
+                            database.accountDao().softDeleteAccount(
+                                id = change.entityId,
+                                deletedAt = change.deletedAt ?: change.updatedAt,
+                                updatedAt = change.updatedAt,
+                                syncStatus = "SYNCED"
+                            )
+                        }
+                    } else if (change.payload != null) {
+                        val acc = gson.fromJson(change.payload, AccountEntity::class.java).copy(syncStatus = "SYNCED")
+                        database.accountDao().upsertAccount(acc)
+                    }
                 }
             }
             "category" -> {
@@ -136,9 +151,20 @@ class SyncManager(
                     remoteUpdatedAt = change.updatedAt,
                     remoteDeviceId = change.deviceId
                 )
-                if (shouldApply && change.payload != null) {
-                    val cat = gson.fromJson(change.payload, CategoryEntity::class.java)
-                    database.categoryDao().upsertCategory(cat)
+                if (shouldApply) {
+                    if (isDelete) {
+                        if (existing != null) {
+                            database.categoryDao().softDeleteCategory(
+                                id = change.entityId,
+                                deletedAt = change.deletedAt ?: change.updatedAt,
+                                updatedAt = change.updatedAt,
+                                syncStatus = "SYNCED"
+                            )
+                        }
+                    } else if (change.payload != null) {
+                        val cat = gson.fromJson(change.payload, CategoryEntity::class.java).copy(syncStatus = "SYNCED")
+                        database.categoryDao().upsertCategory(cat)
+                    }
                 }
             }
             "transaction" -> {
@@ -149,9 +175,20 @@ class SyncManager(
                     remoteUpdatedAt = change.updatedAt,
                     remoteDeviceId = change.deviceId
                 )
-                if (shouldApply && change.payload != null) {
-                    val tx = gson.fromJson(change.payload, TransactionEntity::class.java)
-                    database.transactionDao().upsertTransaction(tx)
+                if (shouldApply) {
+                    if (isDelete) {
+                        if (existing != null) {
+                            database.transactionDao().softDeleteTransaction(
+                                id = change.entityId,
+                                deletedAt = change.deletedAt ?: change.updatedAt,
+                                updatedAt = change.updatedAt,
+                                syncStatus = "SYNCED"
+                            )
+                        }
+                    } else if (change.payload != null) {
+                        val tx = gson.fromJson(change.payload, TransactionEntity::class.java).copy(syncStatus = "SYNCED")
+                        database.transactionDao().upsertTransaction(tx)
+                    }
                 }
             }
             "goal" -> {
@@ -162,9 +199,44 @@ class SyncManager(
                     remoteUpdatedAt = change.updatedAt,
                     remoteDeviceId = change.deviceId
                 )
-                if (shouldApply && change.payload != null) {
-                    val goal = gson.fromJson(change.payload, GoalEntity::class.java)
-                    database.goalDao().upsertGoal(goal)
+                if (shouldApply) {
+                    if (isDelete) {
+                        if (existing != null) {
+                            database.goalDao().softDeleteGoal(
+                                id = change.entityId,
+                                deletedAt = change.deletedAt ?: change.updatedAt,
+                                updatedAt = change.updatedAt,
+                                syncStatus = "SYNCED"
+                            )
+                        }
+                    } else if (change.payload != null) {
+                        val goal = gson.fromJson(change.payload, GoalEntity::class.java).copy(syncStatus = "SYNCED")
+                        database.goalDao().upsertGoal(goal)
+                    }
+                }
+            }
+            "recurring_rule" -> {
+                val existing = database.recurringRuleDao().getRuleById(change.entityId)
+                val shouldApply = existing == null || ConflictResolver.shouldApplyRemote(
+                    localUpdatedAt = existing.updatedAt,
+                    localDeviceId = localDeviceId,
+                    remoteUpdatedAt = change.updatedAt,
+                    remoteDeviceId = change.deviceId
+                )
+                if (shouldApply) {
+                    if (isDelete) {
+                        if (existing != null) {
+                            database.recurringRuleDao().softDeleteRule(
+                                id = change.entityId,
+                                deletedAt = change.deletedAt ?: change.updatedAt,
+                                updatedAt = change.updatedAt,
+                                syncStatus = "SYNCED"
+                            )
+                        }
+                    } else if (change.payload != null) {
+                        val rule = gson.fromJson(change.payload, RecurringRuleEntity::class.java).copy(syncStatus = "SYNCED")
+                        database.recurringRuleDao().upsertRule(rule)
+                    }
                 }
             }
         }

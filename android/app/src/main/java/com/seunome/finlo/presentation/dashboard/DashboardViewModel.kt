@@ -40,31 +40,54 @@ class DashboardViewModel @Inject constructor(
     private val syncManager: SyncManager
 ) : ViewModel() {
 
-    private val calendar = Calendar.getInstance()
     private val startOfMonth: Long
     private val endOfMonth: Long
+    private val prevMonthStart: Long
+    private val prevMonthEnd: Long
 
     init {
-        calendar.set(Calendar.DAY_OF_MONTH, 1)
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
-        startOfMonth = calendar.timeInMillis
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.DAY_OF_MONTH, 1)
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        startOfMonth = cal.timeInMillis
 
-        calendar.add(Calendar.MONTH, 1)
-        endOfMonth = calendar.timeInMillis - 1
+        cal.add(Calendar.MONTH, 1)
+        endOfMonth = cal.timeInMillis - 1
+
+        cal.add(Calendar.MONTH, -2)
+        prevMonthStart = cal.timeInMillis
+
+        cal.add(Calendar.MONTH, 1)
+        prevMonthEnd = cal.timeInMillis - 1
     }
 
     val uiState: StateFlow<DashboardUiState> = combine(
         accountRepository.getAccountsFlow(),
         transactionRepository.getMonthlyIncomeFlow(startOfMonth, endOfMonth),
         transactionRepository.getMonthlyExpenseFlow(startOfMonth, endOfMonth),
+        transactionRepository.getMonthlyIncomeFlow(prevMonthStart, prevMonthEnd),
+        transactionRepository.getMonthlyExpenseFlow(prevMonthStart, prevMonthEnd),
         transactionRepository.getRecentTransactionsFlow(5),
         transactionRepository.getExpensesByCategoryFlow(startOfMonth, endOfMonth),
         categoryRepository.getCategoriesFlow(),
         syncManager.syncState
-    ) { accounts, income, expense, recent, categoryTotals, categories, syncState ->
+    ) { args: Array<Any?> ->
+        @Suppress("UNCHECKED_CAST")
+        val accounts = args[0] as List<com.seunome.finlo.domain.model.Account>
+        val income = args[1] as Long
+        val expense = args[2] as Long
+        val prevIncome = args[3] as Long
+        val prevExpense = args[4] as Long
+        @Suppress("UNCHECKED_CAST")
+        val recent = args[5] as List<Transaction>
+        @Suppress("UNCHECKED_CAST")
+        val categoryTotals = args[6] as List<com.seunome.finlo.core.database.dao.CategoryExpenseTotal>
+        @Suppress("UNCHECKED_CAST")
+        val categories = args[7] as List<com.seunome.finlo.domain.model.Category>
+        val syncState = args[8] as SyncState
 
         val totalBalance = accounts.sumOf { it.balanceCents }
 
@@ -85,7 +108,7 @@ class DashboardViewModel @Inject constructor(
         }
 
         val evolution = listOf(
-            MonthEvolutionData("Mês Ant.", income * 9 / 10, expense * 8 / 10),
+            MonthEvolutionData("Mês Ant.", prevIncome, prevExpense),
             MonthEvolutionData("Mês Atual", income, expense)
         )
 
@@ -93,6 +116,7 @@ class DashboardViewModel @Inject constructor(
             totalBalanceCents = totalBalance,
             monthlyIncomeCents = income,
             monthlyExpenseCents = expense,
+            previousMonthExpenseCents = prevExpense,
             recentTransactions = recent,
             categorySlices = slices,
             evolutionData = evolution,

@@ -17,10 +17,11 @@ import com.seunome.finlo.core.database.entity.GoalEntity
 import com.seunome.finlo.core.database.entity.RecurringRuleEntity
 import com.seunome.finlo.core.database.entity.SyncChangeEntity
 import com.seunome.finlo.core.database.entity.TransactionEntity
+import com.seunome.finlo.core.util.UuidV7
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.util.UUID
+import net.sqlcipher.database.SupportFactory
 
 @Database(
     entities = [
@@ -60,6 +61,11 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             })
 
+            if (passphrase != null && passphrase.isNotEmpty()) {
+                val factory = SupportFactory(passphrase)
+                builder.openHelperFactory(factory)
+            }
+
             return builder.build()
         }
 
@@ -78,7 +84,7 @@ abstract class AppDatabase : RoomDatabase() {
             )
 
             for ((name, icon, color) in defaultCategories) {
-                val id = UUID.randomUUID().toString()
+                val id = UuidV7.generate(now)
                 db.execSQL(
                     "INSERT INTO categories (id, name, icon, colorHex, budgetCents, updatedAt, deletedAt, syncStatus) VALUES ('$id', '$name', '$icon', '$color', 0, $now, NULL, 'SYNCED')"
                 )

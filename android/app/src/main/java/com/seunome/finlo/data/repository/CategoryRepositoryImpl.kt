@@ -5,11 +5,11 @@ import com.seunome.finlo.core.database.AppDatabase
 import com.seunome.finlo.core.database.entity.CategoryEntity
 import com.seunome.finlo.core.database.entity.SyncChangeEntity
 import com.seunome.finlo.core.security.SecureStorage
+import com.seunome.finlo.core.util.UuidV7
 import com.seunome.finlo.domain.model.Category
 import com.seunome.finlo.domain.repository.CategoryRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import java.util.UUID
 
 class CategoryRepositoryImpl(
     private val database: AppDatabase,
@@ -30,7 +30,8 @@ class CategoryRepositoryImpl(
     override suspend fun createCategory(category: Category) {
         val now = System.currentTimeMillis()
         val deviceId = secureStorage.getDeviceId()
-        val entity = CategoryEntity.fromDomain(category.copy(updatedAt = now))
+        val catId = if (category.id.isBlank()) UuidV7.generate(now) else category.id
+        val entity = CategoryEntity.fromDomain(category.copy(id = catId, updatedAt = now))
 
         database.categoryDao().upsertCategory(entity)
         enqueueSync("category", entity.id, "upsert", entity, now, deviceId, null)
@@ -49,6 +50,8 @@ class CategoryRepositoryImpl(
         val now = System.currentTimeMillis()
         val deviceId = secureStorage.getDeviceId()
 
+        val affectedTxIds = database.categoryDao().getTransactionIdsByCategoryId(id)
+
         database.categoryDao().reassignAndSoftDelete(
             oldCategoryId = id,
             newCategoryId = fallbackCategoryId,
@@ -56,6 +59,13 @@ class CategoryRepositoryImpl(
         )
 
         enqueueSync("category", id, "delete", null, now, deviceId, now)
+
+        for (txId in affectedTxIds) {
+            val updatedTx = database.transactionDao().getTransactionById(txId)
+            if (updatedTx != null) {
+                enqueueSync("transaction", txId, "upsert", updatedTx, now, deviceId, null)
+            }
+        }
     }
 
     private suspend fun enqueueSync(
@@ -70,7 +80,7 @@ class CategoryRepositoryImpl(
         val payloadJson = if (payload != null) gson.toJson(payload) else "{}"
         database.syncChangeDao().enqueue(
             SyncChangeEntity(
-                id = UUID.randomUUID().toString(),
+                id = UuidV7.generate(),
                 entityType = entityType,
                 entityId = entityId,
                 operation = op,

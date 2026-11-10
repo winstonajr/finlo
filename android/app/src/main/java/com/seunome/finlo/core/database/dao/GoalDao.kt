@@ -28,8 +28,8 @@ interface GoalDao {
     @Query("UPDATE goals SET currentAmountCents = :newAmount, updatedAt = :updatedAt, syncStatus = 'PENDING' WHERE id = :id")
     suspend fun updateGoalProgress(id: String, newAmount: Long, updatedAt: Long)
 
-    @Query("UPDATE goals SET deletedAt = :deletedAt, updatedAt = :updatedAt, syncStatus = 'PENDING' WHERE id = :id")
-    suspend fun softDeleteGoal(id: String, deletedAt: Long, updatedAt: Long)
+    @Query("UPDATE goals SET deletedAt = :deletedAt, updatedAt = :updatedAt, syncStatus = :syncStatus WHERE id = :id")
+    suspend fun softDeleteGoal(id: String, deletedAt: Long, updatedAt: Long, syncStatus: String = "PENDING")
 
     @Query("DELETE FROM goals")
     suspend fun deleteAll()

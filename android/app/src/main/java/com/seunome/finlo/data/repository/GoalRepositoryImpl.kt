@@ -5,11 +5,11 @@ import com.seunome.finlo.core.database.AppDatabase
 import com.seunome.finlo.core.database.entity.GoalEntity
 import com.seunome.finlo.core.database.entity.SyncChangeEntity
 import com.seunome.finlo.core.security.SecureStorage
+import com.seunome.finlo.core.util.UuidV7
 import com.seunome.finlo.domain.model.Goal
 import com.seunome.finlo.domain.repository.GoalRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import java.util.UUID
 
 class GoalRepositoryImpl(
     private val database: AppDatabase,
@@ -30,7 +30,8 @@ class GoalRepositoryImpl(
     override suspend fun createGoal(goal: Goal) {
         val now = System.currentTimeMillis()
         val deviceId = secureStorage.getDeviceId()
-        val entity = GoalEntity.fromDomain(goal.copy(updatedAt = now))
+        val goalId = if (goal.id.isBlank()) UuidV7.generate(now) else goal.id
+        val entity = GoalEntity.fromDomain(goal.copy(id = goalId, updatedAt = now))
 
         database.goalDao().upsertGoal(entity)
         enqueueSync("goal", entity.id, "upsert", entity, now, deviceId, null)
@@ -76,7 +77,7 @@ class GoalRepositoryImpl(
         val payloadJson = if (payload != null) gson.toJson(payload) else "{}"
         database.syncChangeDao().enqueue(
             SyncChangeEntity(
-                id = UUID.randomUUID().toString(),
+                id = UuidV7.generate(),
                 entityType = entityType,
                 entityId = entityId,
                 operation = op,

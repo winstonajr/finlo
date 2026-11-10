@@ -5,11 +5,13 @@ import com.seunome.finlo.core.database.AppDatabase
 import com.seunome.finlo.core.database.entity.AccountEntity
 import com.seunome.finlo.core.database.entity.SyncChangeEntity
 import com.seunome.finlo.core.security.SecureStorage
+import com.seunome.finlo.core.util.UuidV7
 import com.seunome.finlo.domain.model.Account
+import com.seunome.finlo.domain.model.AccountType
+import com.seunome.finlo.domain.model.SyncStatus
 import com.seunome.finlo.domain.repository.AccountRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import java.util.UUID
 
 class AccountRepositoryImpl(
     private val database: AppDatabase,
@@ -18,10 +20,20 @@ class AccountRepositoryImpl(
 ) : AccountRepository {
 
     override fun getAccountsFlow(): Flow<List<Account>> {
-        return database.accountDao().getActiveAccountsFlow().map { entities ->
-            entities.map { entity ->
-                val balance = database.accountDao().getAccountBalance(entity.id)
-                entity.toDomain(balance)
+        return database.accountDao().getActiveAccountsWithBalanceFlow().map { rows ->
+            rows.map { row ->
+                Account(
+                    id = row.id,
+                    name = row.name,
+                    type = AccountType.valueOf(row.type),
+                    currency = row.currency,
+                    colorHex = row.colorHex,
+                    isArchived = row.isArchived,
+                    balanceCents = row.calculatedBalanceCents,
+                    updatedAt = row.updatedAt,
+                    deletedAt = row.deletedAt,
+                    syncStatus = SyncStatus.valueOf(row.syncStatus)
+                )
             }
         }
     }
@@ -39,7 +51,8 @@ class AccountRepositoryImpl(
     override suspend fun createAccount(account: Account) {
         val now = System.currentTimeMillis()
         val deviceId = secureStorage.getDeviceId()
-        val entity = AccountEntity.fromDomain(account.copy(updatedAt = now))
+        val accountId = if (account.id.isBlank()) UuidV7.generate(now) else account.id
+        val entity = AccountEntity.fromDomain(account.copy(id = accountId, updatedAt = now))
 
         database.accountDao().upsertAccount(entity)
         enqueueSync("account", entity.id, "upsert", entity, now, deviceId, null)
@@ -83,7 +96,7 @@ class AccountRepositoryImpl(
         val payloadJson = if (payload != null) gson.toJson(payload) else "{}"
         database.syncChangeDao().enqueue(
             SyncChangeEntity(
-                id = UUID.randomUUID().toString(),
+                id = UuidV7.generate(),
                 entityType = entityType,
                 entityId = entityId,
                 operation = op,

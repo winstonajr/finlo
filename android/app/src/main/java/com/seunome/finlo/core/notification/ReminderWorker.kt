@@ -7,16 +7,48 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.seunome.finlo.core.database.AppDatabase
+import com.seunome.finlo.core.security.SecureStorage
+import com.seunome.finlo.domain.repository.RecurringRuleRepository
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 import java.util.concurrent.TimeUnit
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface ReminderWorkerEntryPoint {
+    fun appDatabase(): AppDatabase
+    fun recurringRuleRepository(): RecurringRuleRepository
+    fun secureStorage(): SecureStorage
+}
 
 class ReminderWorker(
     appContext: Context,
     params: WorkerParameters,
-    private val database: AppDatabase? = null
+    private val injectedDatabase: AppDatabase? = null,
+    private val injectedRecurringRepo: RecurringRuleRepository? = null,
+    private val injectedSecureStorage: SecureStorage? = null
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
         return try {
+            val entryPoint = if (injectedDatabase == null || injectedRecurringRepo == null || injectedSecureStorage == null) {
+                try {
+                    EntryPointAccessors.fromApplication(
+                        applicationContext,
+                        ReminderWorkerEntryPoint::class.java
+                    )
+                } catch (e: Exception) {
+                    null
+                }
+            } else null
+
+            val database = injectedDatabase ?: entryPoint?.appDatabase()
+            val recurringRepo = injectedRecurringRepo ?: entryPoint?.recurringRuleRepository()
+
+            recurringRepo?.processDueRecurringRules()
+
             val notificationHelper = NotificationHelper(applicationContext)
 
             if (database != null) {

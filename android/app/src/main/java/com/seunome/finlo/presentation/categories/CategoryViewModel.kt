@@ -2,6 +2,7 @@ package com.seunome.finlo.presentation.categories
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.seunome.finlo.core.util.UuidV7
 import com.seunome.finlo.domain.model.Category
 import com.seunome.finlo.domain.repository.CategoryRepository
 import com.seunome.finlo.domain.repository.TransactionRepository
@@ -13,7 +14,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
-import java.util.UUID
 import javax.inject.Inject
 
 data class CategoryWithBudget(
@@ -43,6 +43,7 @@ class CategoryViewModel @Inject constructor(
         calendar.set(Calendar.HOUR_OF_DAY, 0)
         calendar.set(Calendar.MINUTE, 0)
         calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
         startOfMonth = calendar.timeInMillis
 
         calendar.add(Calendar.MONTH, 1)
@@ -76,7 +77,7 @@ class CategoryViewModel @Inject constructor(
     fun saveCategory(id: String?, name: String, colorHex: String, icon: String, budgetCents: Long) {
         viewModelScope.launch {
             val cat = Category(
-                id = id ?: UUID.randomUUID().toString(),
+                id = id ?: UuidV7.generate(),
                 name = name,
                 colorHex = colorHex,
                 icon = icon,

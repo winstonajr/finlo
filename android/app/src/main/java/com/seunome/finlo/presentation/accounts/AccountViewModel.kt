@@ -2,6 +2,7 @@ package com.seunome.finlo.presentation.accounts
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.seunome.finlo.core.util.UuidV7
 import com.seunome.finlo.domain.model.Account
 import com.seunome.finlo.domain.model.AccountType
 import com.seunome.finlo.domain.repository.AccountRepository
@@ -11,7 +12,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.util.UUID
 import javax.inject.Inject
 
 data class AccountListUiState(
@@ -35,7 +35,7 @@ class AccountViewModel @Inject constructor(
     fun saveAccount(id: String?, name: String, type: AccountType, colorHex: String) {
         viewModelScope.launch {
             val account = Account(
-                id = id ?: UUID.randomUUID().toString(),
+                id = id ?: UuidV7.generate(),
                 name = name,
                 type = type,
                 colorHex = colorHex

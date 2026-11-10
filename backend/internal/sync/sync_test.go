@@ -92,6 +92,7 @@ func TestSyncLWWConflictResolution(t *testing.T) {
 	resp2, err := service.Push(ctx, userID, "key-2", req2)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), resp2.ServerVersion)
+	assert.Equal(t, 0, resp2.AppliedCount)
 
 	// 3. Incoming change with equal timestamp t=1000, higher deviceId "device-Z" -> wins
 	req3 := domain.SyncPushRequest{
@@ -109,6 +110,7 @@ func TestSyncLWWConflictResolution(t *testing.T) {
 	resp3, err := service.Push(ctx, userID, "key-3", req3)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), resp3.ServerVersion)
+	assert.Equal(t, 1, resp3.AppliedCount)
 
 	// 4. Incoming change with newer timestamp t=2000 -> wins
 	req4 := domain.SyncPushRequest{

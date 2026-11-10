@@ -10,10 +10,12 @@ import com.seunome.finlo.core.sync.SyncManager
 import com.seunome.finlo.data.repository.AccountRepositoryImpl
 import com.seunome.finlo.data.repository.CategoryRepositoryImpl
 import com.seunome.finlo.data.repository.GoalRepositoryImpl
+import com.seunome.finlo.data.repository.RecurringRuleRepositoryImpl
 import com.seunome.finlo.data.repository.TransactionRepositoryImpl
 import com.seunome.finlo.domain.repository.AccountRepository
 import com.seunome.finlo.domain.repository.CategoryRepository
 import com.seunome.finlo.domain.repository.GoalRepository
+import com.seunome.finlo.domain.repository.RecurringRuleRepository
 import com.seunome.finlo.domain.repository.TransactionRepository
 import dagger.Module
 import dagger.Provides
@@ -88,5 +90,14 @@ object RepositoryModule {
         secureStorage: SecureStorage
     ): GoalRepository {
         return GoalRepositoryImpl(database, secureStorage)
+    }
+
+    @Provides
+    @Singleton
+    fun provideRecurringRuleRepository(
+        database: AppDatabase,
+        secureStorage: SecureStorage
+    ): RecurringRuleRepository {
+        return RecurringRuleRepositoryImpl(database, secureStorage)
     }
 }

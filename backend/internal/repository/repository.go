@@ -22,7 +22,7 @@ type SyncRepository interface {
 	CheckIdempotencyKey(ctx context.Context, userID, key string) (bool, error)
 	RecordIdempotencyKey(ctx context.Context, userID, key string, response []byte) error
 	GetIdempotencyResponse(ctx context.Context, userID, key string) ([]byte, bool, error)
-	ApplyChanges(ctx context.Context, userID string, changes []domain.SyncChange) (int64, error)
+	ApplyChanges(ctx context.Context, userID string, changes []domain.SyncChange) (int64, int, error)
 	GetChangesAfterVersion(ctx context.Context, userID string, cursor int64, limit int) ([]domain.SyncChange, int64, bool, error)
 	GetAllChangesForExport(ctx context.Context, userID string) ([]domain.SyncChange, error)
 }
