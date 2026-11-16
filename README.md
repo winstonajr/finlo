@@ -26,7 +26,7 @@ Finlo é um sistema de controle financeiro pessoal completo, operando sob o para
 │   └── Dockerfile         # Multi-stage build otimizado em Alpine Linux
 └── android/               # App Android nativo (Kotlin 2.x, Jetpack Compose)
     ├── app/
-    │   ├── src/main/java/com/seunome/finlo/
+    │   ├── src/main/java/com/wisntonajr/finlo/
     │   │   ├── core/
     │   │   │   ├── database/     # Room DB, SQLCipher, DAOs e Entidades
     │   │   │   ├── designsystem/ # Material 3, Paleta Finlo, Tipografia
